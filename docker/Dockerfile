@@ -1,9 +1,9 @@
 FROM clkao/postgres-plv8:latest
-
-# FROM mdillon/postgis:latest
+#FROM postgres:9.5
+# MAINTAINER Mike Dillon <mike@appropriate.io>
 
 ENV POSTGIS_MAJOR 2.2
-ENV POSTGIS_VERSION 2.2.1+dfsg-2.pgdg80+1
+ENV POSTGIS_VERSION 2.2.2+dfsg-1.pgdg80+1
 
 RUN apt-get update \
       && apt-get install -y --no-install-recommends \
