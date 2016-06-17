@@ -20,8 +20,9 @@ dbname=`cat ../.config/db.name`
 dbencode="UTF8"
 
 run() {
+   psql -h "$dbhost" -p "$dbport" -U "$dbuser" -d "$dbname" -f "$scriptsDir/1.db-import.start.sql"
    import_osm --create
-   psql -h "$dbhost" -p "$dbport" -U "$dbuser" -d "$dbname" -f "$scriptsDir/1.db-import.sql"
+   psql -h "$dbhost" -p "$dbport" -U "$dbuser" -d "$dbname" -f "$scriptsDir/1.db-import.stop.sql"
 }
 
 import_osm() {
