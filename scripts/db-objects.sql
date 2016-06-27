@@ -1,24 +1,36 @@
-
-/* -------------------------------------------------------------------------- */
-
-drop table if exists objects cascade;
-create table objects(
-    id SERIAL primary key,
-    type varchar(255),
-    properties jsonb,
-    geometry geometry,
-    check (st_srid(geometry) = 4326)
-);
-
-create or replace view objects_webmercator as
-select
-    objects.id,
-    objects.type,
-    objects.properties,
-    objects.geometry,
-    st_transform(objects.geometry, 3857) as the_geom_webmercator
-from objects;
-create index on objects(type);
+-- DROP FUNCTION IF EXISTS select_json(obj jsonb, path text);
+/* */
+-- Selects the specified field of a JSON object
+CREATE OR REPLACE FUNCTION select_json(obj jsonb, path text)
+RETURNS jsonb AS $$
+    var results = [];
+    if (!Array.isArray(path)) {
+        path = path.split('.');
+    }
+    return doSelect(obj, path, 0, results);
+    function doSelect(obj, path, pos, results) {
+        if (obj === undefined)
+            return results;
+        if (pos === path.length) {
+            results.push(obj);
+            return results;
+        }
+        var field = path[pos];
+        var value = obj[field];
+        if (Array.isArray(value)) {
+            value.forEach(function(cell) {
+                doSelect(cell, path, pos + 1, results);
+            });
+        } else {
+            doSelect(value, path, pos + 1, results);
+        }
+        return results;
+    }
+$$ LANGUAGE plv8 STRICT IMMUTABLE;
+-- */
+-- -- Example: 
+-- select select_json('{"properties":{"name":"John"}}'::jsonb, 'properties.name');
+-- select select_json(properties, 'address.city') from objects;
 
 -- -------------------------------------------------------------------------------
 
@@ -26,7 +38,7 @@ DROP FUNCTION IF EXISTS create_geojson_table(t varchar(255));
 CREATE OR REPLACE FUNCTION create_geojson_table(t varchar(255)) RETURNS jsonb AS $$
     var sql = '' + 
     'create table ' + t + '(' + 
-        'id serial primary key, ' + 
+        'guid uuid primary key default gen_random_uuid(), ' +
         'type varchar(255), ' +
         'properties jsonb, ' +
         'geometry geometry, ' +
@@ -36,7 +48,39 @@ CREATE OR REPLACE FUNCTION create_geojson_table(t varchar(255)) RETURNS jsonb AS
 $$ LANGUAGE plv8 STRICT IMMUTABLE;
 -- -- example of usage:
 -- drop table if exists objects cascade;
--- create_geojson_table('objects');
+-- select create_geojson_table('objects');
+
+/* -------------------------------------------------------------------------- */
+
+drop table if exists objects cascade;
+select create_geojson_table('objects');
+
+create or replace view objects_webmercator as
+select
+    objects.guid,
+    objects.type,
+    objects.properties,
+    objects.geometry,
+    st_transform(objects.geometry, 3857) as the_geom_webmercator
+from objects;
+create index on objects(type);
+
+-- -------------------------------------------------------------------------------
+
+/* */
+DROP FUNCTION IF EXISTS insert_into_geojson_table(t text, obj jsonb);
+CREATE OR REPLACE FUNCTION insert_into_geojson_table(t text, obj jsonb) RETURNS jsonb AS $$
+    var plan = plv8.prepare( 'insert into ' + t + '(properties, geometry) values (to_json($1), ST_SetSRID(ST_GeomFromGeoJSON($2),4326))', ['jsonb', 'text'] );
+    try {
+        plan.execute([obj.properties, JSON.stringify(obj.geometry)])
+    } finally {
+        plan.free();
+    }
+    return 1;
+$$ LANGUAGE plv8 STRICT IMMUTABLE;
+-- */
+
+-- -- example of usage:
 
 -- -------------------------------------------------------------------------------
 /* */
@@ -74,9 +118,11 @@ $$ LANGUAGE plv8 STRICT IMMUTABLE;
 -- */
 -- example of usage:
 -- select convert_table('planet_osm_polygon', '', 'way', 'osm_id', 'objects');
-
+-- select convert_table('planet_osm_line', '', 'way', 'osm_id', 'objects');
+-- select convert_table('planet_osm_point', '', 'way', 'osm_id', 'objects');
 
 /* -------------------------------------------------------------------------- */
+
 
 drop function if exists jsonb_object_set_key(
     "json" jsonb,
